@@ -1,0 +1,250 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/mi_cocina_360/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  kitchens      Kitchen[]
+  kitchenMembers KitchenMember[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Kitchen {
+  id           String   @id @default(cuid())
+  name         String
+  businessType String
+  country      String   @default("España")
+  currency     String   @default("EUR")
+  foodCostTarget   Float @default(30)
+  foodCostWarning  Float @default(35)
+  foodCostCritical Float @default(40)
+  userId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ingredients  Ingredient[]
+  suppliers    Supplier[]
+  recipes      Recipe[]
+  deliveryNotes DeliveryNote[]
+  alertReviews AlertReview[]
+  shoppingListItems ShoppingListItem[]
+  members      KitchenMember[]
+
+  @@index([userId])
+}
+
+model Supplier {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  notes         String?
+  kitchenId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  kitchen       Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  ingredients   Ingredient[]
+  deliveryNotes DeliveryNote[]
+
+  @@index([kitchenId])
+}
+
+model Ingredient {
+  id              String   @id @default(cuid())
+  name            String
+  category        String
+  unit            String
+  costPerUnit     Float    @default(0)
+  targetStock     Float    @default(0)
+  minStock        Float    @default(0)
+  criticalStock   Float    @default(0)
+  currentStock    Float    @default(0)
+  notes           String?
+  supplierId      String?
+  kitchenId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  kitchen         Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  supplier        Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  recipeIngredients RecipeIngredient[]
+  priceHistory    IngredientPriceHistory[]
+  deliveryNotes   DeliveryNote[]
+  shoppingListItems ShoppingListItem[]
+
+  @@index([kitchenId])
+  @@index([supplierId])
+}
+
+model Recipe {
+  id              String   @id @default(cuid())
+  name            String
+  category        String
+  yield           Int      @default(1)
+  sellingPrice    Float    @default(0)
+  notes           String?
+  kitchenId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  kitchen         Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  ingredients     RecipeIngredient[]
+
+  @@index([kitchenId])
+}
+
+model RecipeIngredient {
+  id           String     @id @default(cuid())
+  quantity     Float
+  recipeId     String
+  ingredientId String
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, ingredientId])
+  @@index([recipeId])
+  @@index([ingredientId])
+}
+
+model DeliveryNote {
+  id           String   @id @default(cuid())
+  date         DateTime @default(now())
+  quantity     Float
+  unit         String
+  unitPrice    Float
+  totalPrice   Float
+  notes        String?
+  supplierId   String
+  ingredientId String
+  kitchenId    String
+  createdAt    DateTime @default(now())
+  supplier     Supplier   @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  kitchen      Kitchen    @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+
+  @@index([kitchenId])
+  @@index([supplierId])
+  @@index([ingredientId])
+  @@index([date])
+}
+
+// Estado de revisión de una alerta del Centro de alertas.
+// Solo se guarda una fila por alerta cuando el usuario actúa sobre ella
+// (marcar como revisada). Las alertas vivas se calculan siempre desde los
+// datos reales; esta tabla únicamente añade el estado revisada/pendiente y
+// una instantánea para poder mostrar el historial de lo ya revisado.
+// Campos preparados para futuras ampliaciones (quién revisó, comentarios).
+model AlertReview {
+  id           String   @id @default(cuid())
+  kitchenId    String
+  alertKey     String
+  type         String
+  severity     String
+  title        String
+  description  String
+  href         String?
+  elementId    String?
+  status       String   @default("revisada")
+  comment      String?
+  reviewedById String?
+  reviewedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  kitchen      Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+
+  @@unique([kitchenId, alertKey])
+  @@index([kitchenId])
+}
+
+model KitchenMember {
+  id        String   @id @default(cuid())
+  userId    String
+  kitchenId String
+  role      String   @default("ADMIN") // ADMIN, ENCARGADO, COCINERO, CONSULTA
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kitchen   Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kitchenId])
+  @@index([userId])
+  @@index([kitchenId])
+}
+
+model ShoppingListItem {
+  id           String   @id @default(cuid())
+  kitchenId    String
+  ingredientId String
+  quantity     Float    @default(0)
+  status       String   @default("pending") // "pending" | "purchased"
+  purchasedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  kitchen      Kitchen  @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([kitchenId, ingredientId])
+  @@index([kitchenId])
+  @@index([ingredientId])
+}
+
+model IngredientPriceHistory {
+  id           String   @id @default(cuid())
+  price        Float
+  date         DateTime @default(now())
+  source       String   @default("manual")
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@index([ingredientId])
+  @@index([date])
+}
